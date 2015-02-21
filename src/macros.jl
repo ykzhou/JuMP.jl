@@ -137,7 +137,7 @@ macro addConstraint(m, x, extra...)
             error("in @addConstraint ($(string(x))): expected comparison operator (<=, >=, or ==).")
         end
         lhs = :($(x.args[1]) - $(x.args[3]))
-        newaff, parsecode = parseExpr(lhs, :q, [1.0])
+        newaff, parsecode = parseExpr_toplevel(lhs, :q, [1.0])
         code = quote
             q = AffExpr()
             $parsecode

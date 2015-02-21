@@ -217,6 +217,20 @@ end
 
 is_complex_expr(ex) = isa(ex,Expr) && !isexpr(ex,:ref)
 
+function parseExpr_toplevel(x::Expr, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym())
+    isnorm = any(x.args) do arg
+        isexpr(arg, :curly) && arg.args[1] == :norm
+    end
+    if isnorm
+        # do special norm handling here!
+    else
+        return parseExpr(x, aff, coefficients, newaff)
+    end
+end
+
+parseExpr_toplevel(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym()) =
+    parseExpr(x, aff, coefficients, newaff)
+
 # output is assigned to newaff
 function parseExpr(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym())
     #@show x
