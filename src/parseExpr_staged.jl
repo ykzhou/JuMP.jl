@@ -217,12 +217,15 @@ end
 
 is_complex_expr(ex) = isa(ex,Expr) && !isexpr(ex,:ref)
 
+has_norm(x::Expr) = any(x.args) do y
+    isexpr(y, :curly) && y.args[1] == :norm
+end
+has_norm(x) = false
+
 function parseExpr_toplevel(x::Expr, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym())
-    isnorm = any(x.args) do arg
-        isexpr(arg, :curly) && arg.args[1] == :norm
-    end
-    if isnorm
+    if has_norm(x)
         # do special norm handling here!
+
     else
         return parseExpr(x, aff, coefficients, newaff)
     end

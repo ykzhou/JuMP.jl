@@ -16,7 +16,7 @@ using Compat
 
 export
 # Objects
-    Model, Variable, AffExpr, QuadExpr, LinearConstraint, QuadConstraint,
+    Model, Variable, AffExpr, QuadExpr, LinearConstraint, QuadConstraint, SOCConstraint,
     ConstraintRef, LinConstrRef,
 # Functions
     # Model related
@@ -51,6 +51,7 @@ type Model
     linconstr#::Vector{LinearConstraint}
     quadconstr
     sosconstr
+    socconstr
 
     # Column data
     numCols::Int
@@ -106,7 +107,7 @@ function Model(;solver=UnsetSolver())
     if !isa(solver,MathProgBase.AbstractMathProgSolver)
         error("solver argument ($solver) must be an AbstractMathProgSolver")
     end
-    Model(QuadExpr(),:Min,LinearConstraint[], QuadConstraint[],SOSConstraint[],
+    Model(QuadExpr(),:Min,LinearConstraint[], QuadConstraint[],SOSConstraint[],SOCConstraint[],
           0,String[],String[],Float64[],Float64[],Symbol[],
           0,Float64[],Float64[],Float64[],nothing,solver,
           false,Any[],nothing,nothing,JuMPContainer[],
@@ -583,6 +584,26 @@ end
 # Copy utility function
 function Base.copy(c::QuadConstraint, new_model::Model)
     return QuadConstraint(copy(c.terms, new_model), c.sense)
+end
+
+##########################################################################
+# SOCConstraint is a second-order cone constraint of the form
+# ||Ax-b||₂ + cᵀx + d ≤ 0
+
+type SOCConstraint
+    norm::Vector{AffExpr}
+    aff::AffExpr
+end
+
+function addConstraint(m::Model, c::SOCConstraint)
+    push!(m.socconstr,c)
+    m.internalModelLoaded = false
+    return ConstraintRef{SOCConstraint}(m,length(m.socconstr))
+end
+
+# Copy utility function, not exported
+function Base.copy(c::SOCConstraint, new_model::Model)
+    return SOCConstraint(copy(c.norm), copy(c.aff))
 end
 
 ##########################################################################
