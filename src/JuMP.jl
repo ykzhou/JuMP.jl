@@ -139,6 +139,17 @@ function setObjectiveSense(m::Model, newSense::Symbol)
 end
 setObjective(m::Model, something::Any) =
     error("in setObjective: needs three arguments: model, objective sense (:Max or :Min), and expression.")
+
+# # Hacky little fallbacks so that arrays of length 1 act as scalars for adding constraints and setting objective
+# function setObjective(m::Model, sense::Symbol, x::Array)
+#     length(x) == 1 || error("in setObjective: no support for vectorized objective of size $(size(x))")
+#     setObjective(m, sense, x[1])
+# end
+# function addConstraint(m::Model, x::Array)
+#     length(x) == 1 || error("in addConstraint: vectorized constraints of size $(size(x)) must used elementwise 'dot' comparison operators (.>=, .<=, .==)")
+#     addConstraint(m, x[1])
+# end
+
 function setSolver(m::Model, solver::MathProgBase.AbstractMathProgSolver)
     m.solver = solver
     m.internalModel = nothing
@@ -325,7 +336,7 @@ typealias AffExpr GenericAffExpr{Float64,Variable}
 AffExpr() = AffExpr(Variable[],Float64[],0.0)
 
 Base.isempty(a::AffExpr) = (length(a.vars) == 0 && a.constant == 0.)
-Base.convert(::Type{AffExpr}, v::Variable) = AffExpr([v], [1.], 0.)
+Base.convert(::Type{AffExpr}, v::Variable) = AffExpr(Variable[v], [1.], 0.)
 Base.convert(::Type{AffExpr}, v::Real) = AffExpr(Variable[], Float64[], v)
 
 function assert_isfinite(a::AffExpr)
@@ -368,6 +379,12 @@ typealias QuadExpr GenericQuadExpr{Float64,Variable}
 QuadExpr() = QuadExpr(Variable[],Variable[],Float64[],AffExpr())
 
 Base.isempty(q::QuadExpr) = (length(q.qvars1) == 0 && isempty(q.aff))
+Base.zero{C,V}(::Type{GenericQuadExpr{C,V}}) = GenericQuadExpr(V[], V[], C[], one(GenericAffExpr{C,V}))
+Base.one{C,V}(::Type{GenericQuadExpr{C,V}})  = GenericQuadExpr(V[], V[], C[], zero(GenericAffExpr{C,V}))
+Base.zero(q::GenericQuadExpr) = zero(typeof(q))
+Base.one(q::GenericQuadExpr)  = one(typeof(q))
+
+Base.convert(::Type{QuadExpr}, v::Union(Real,Variable,AffExpr)) = QuadExpr(Variable[], Variable[], Float64[], AffExpr(v))
 
 function assert_isfinite(q::GenericQuadExpr)
     assert_isfinite(q.aff)
@@ -471,6 +488,10 @@ function addConstraint(m::Model, c::LinearConstraint)
     end
     return ConstraintRef{LinearConstraint}(m,length(m.linconstr))
 end
+addConstraint(m::Model, c::Array{LinearConstraint}) =
+    error("Vectorized constraint added without elementwise comparisons. Try using one of (.<=,.>=,.==).")
+
+addVectorizedConstraint(m::Model, v::Array{LinearConstraint}) = map(c->addConstraint(m,c), v)
 
 # Copy utility function, not exported
 function Base.copy(c::LinearConstraint, new_model::Model)
@@ -580,6 +601,10 @@ function addConstraint(m::Model, c::QuadConstraint)
     end
     return ConstraintRef{QuadConstraint}(m,length(m.quadconstr))
 end
+addConstraint(m::Model, c::Array{QuadConstraint}) =
+    error("Vectorized constraint added without elementwise comparisons. Try using one of (.<=,.>=,.==).")
+
+addVectorizedConstraint(m::Model, v::Array{QuadConstraint}) = map(c->addConstraint(m,c), v)
 
 # Copy utility function
 function Base.copy(c::QuadConstraint, new_model::Model)
@@ -670,6 +695,11 @@ end
 ##########################################################################
 # Operator overloads
 include("operators.jl")
+if VERSION > v"0.4-"
+    include(joinpath("v0.4","concatenation.jl"))
+else
+    include(joinpath("v0.3","concatenation.jl"))
+end
 # Writers - we support MPS (MILP + QuadObj), LP (MILP)
 include("writers.jl")
 # Solvers

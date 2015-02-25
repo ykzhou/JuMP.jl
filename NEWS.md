@@ -6,6 +6,8 @@ Unversioned
 
   * Comparison operators for constructing constraints (e.g. ``2x >= 1``) have been deprecated. Instead, construct the constraints explicitly in
     the ``@addConstraint`` macro to add them to the model, or in the ``@LinearConstraint`` macro to create a stand-alone linear constraint instance.
+  * Support for vectorized operations on Variables, expressions, and JuMPArrays with indexing over unit ranges starting at one. See
+    the documentation for details.
 
 Version 0.8.0 (February 17, 2015)
 ---------------------------------
