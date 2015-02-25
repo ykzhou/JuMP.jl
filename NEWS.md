@@ -1,6 +1,11 @@
 JuMP release notes
 ==================
 
+Unversioned
+-----------
+  * Support for vectorized operations on Variables, expressions, and JuMPArrays with indexing over unit ranges starting at one. See
+    the documentation for details.
+
 Version 0.9.1 (April 25, 2015)
 ------------------------------
 

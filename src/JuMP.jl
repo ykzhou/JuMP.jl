@@ -152,6 +152,10 @@ function setObjectiveSense(m::Model, newSense::Symbol)
 end
 setObjective(m::Model, something::Any) =
     error("in setObjective: needs three arguments: model, objective sense (:Max or :Min), and expression.")
+
+setObjective(::Model, ::Symbol, x::Array) =
+    error("in setObjective: array of size $(size(x)) passed as objective; only scalar objectives are allowed")
+
 function setSolver(m::Model, solver::MathProgBase.AbstractMathProgSolver)
     m.solver = solver
     m.internalModel = nothing
@@ -333,6 +337,7 @@ function Base.append!{T,S}(aff::GenericAffExpr{T,S}, other::GenericAffExpr{T,S})
     append!(aff.vars, other.vars)
     append!(aff.coeffs, other.coeffs)
     aff.constant += other.constant  # Not efficient if CoefType isn't immutable
+    aff
 end
 
 # Copy an affine expression
@@ -390,6 +395,20 @@ typealias QuadExpr GenericQuadExpr{Float64,Variable}
 QuadExpr() = QuadExpr(Variable[],Variable[],Float64[],AffExpr())
 
 Base.isempty(q::QuadExpr) = (length(q.qvars1) == 0 && isempty(q.aff))
+Base.zero{C,V}(::Type{GenericQuadExpr{C,V}}) = GenericQuadExpr(V[], V[], C[], one(GenericAffExpr{C,V}))
+Base.one{C,V}(::Type{GenericQuadExpr{C,V}})  = GenericQuadExpr(V[], V[], C[], zero(GenericAffExpr{C,V}))
+Base.zero(q::GenericQuadExpr) = zero(typeof(q))
+Base.one(q::GenericQuadExpr)  = one(typeof(q))
+
+Base.convert(::Type{QuadExpr}, v::Union(Real,Variable,AffExpr)) = QuadExpr(Variable[], Variable[], Float64[], AffExpr(v))
+
+function Base.append!{T,S}(q::GenericQuadExpr{T,S}, other::GenericQuadExpr{T,S})
+    append!(q.qvars1, other.qvars1)
+    append!(q.qvars2, other.qvars2)
+    append!(q.qcoeffs, other.qcoeffs)
+    append!(q.aff, other.aff)
+    q
+end
 
 function assert_isfinite(q::GenericQuadExpr)
     assert_isfinite(q.aff)
@@ -493,6 +512,10 @@ function addConstraint(m::Model, c::LinearConstraint)
     end
     return ConstraintRef{LinearConstraint}(m,length(m.linconstr))
 end
+addConstraint(m::Model, c::Array{LinearConstraint}) =
+    error("Vectorized constraint added without elementwise comparisons. Try using one of (.<=,.>=,.==).")
+
+addVectorizedConstraint(m::Model, v::Array{LinearConstraint}) = map(c->addConstraint(m,c), v)
 
 # Copy utility function, not exported
 function Base.copy(c::LinearConstraint, new_model::Model)
@@ -605,6 +628,10 @@ function addConstraint(m::Model, c::QuadConstraint)
     end
     return ConstraintRef{QuadConstraint}(m,length(m.quadconstr))
 end
+addConstraint(m::Model, c::Array{QuadConstraint}) =
+    error("Vectorized constraint added without elementwise comparisons. Try using one of (.<=,.>=,.==).")
+
+addVectorizedConstraint(m::Model, v::Array{QuadConstraint}) = map(c->addConstraint(m,c), v)
 
 # Copy utility function
 function Base.copy(c::QuadConstraint, new_model::Model)
@@ -695,6 +722,11 @@ end
 ##########################################################################
 # Operator overloads
 include("operators.jl")
+if VERSION > v"0.4-"
+    include(joinpath("v0.4","concatenation.jl"))
+else
+    include(joinpath("v0.3","concatenation.jl"))
+end
 # Writers - we support MPS (MILP + QuadObj), LP (MILP)
 include("writers.jl")
 # Solvers

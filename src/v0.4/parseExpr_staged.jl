@@ -134,7 +134,11 @@ function addToExpression(ex::QuadExpr, c::AffExpr, x::AffExpr)
     return addToExpression(ex, 1.0, q)
 end
 
-addToExpression(aff, c, x) = error("Cannot construct an affine expression with a term of type ($(typeof(c)))*($(typeof(x)))")
+include(joinpath("..","vectorized_macros_overloads.jl"))
+
+stagedfunction addToExpression_reorder(ex, arg)
+    :(addToExpression(ex, 1.0, arg))
+end
 
 stagedfunction addToExpression_reorder(ex, args...)
     if !isleaftype(ex) || mapreduce(t -> !isleaftype(t), |, args)
@@ -143,6 +147,7 @@ stagedfunction addToExpression_reorder(ex, args...)
     # how many of the multiplicands are variables?
     n_var = mapreduce(t -> (t == Variable || t == AffExpr), +, args)
     has_quad = mapreduce(t -> (t == QuadExpr), |, args)
+    # has_vect = any(t -> (t <: Array), args)
     if n_var == 0 && !has_quad
         #println("No variables")
         return :(addToExpression(ex, 1.0, (*)(args...)))
@@ -161,7 +166,6 @@ stagedfunction addToExpression_reorder(ex, args...)
         return :(addToExpression(ex, $coef_expr, args[$var_idx]))
     else
         #println("Nonlinear")
-        # fall back
         coef_expr = Expr(:call, :*, [:(args[$i]) for i in 1:(length(args)-1)]...)
         return :(addToExpression(ex, $coef_expr, args[$(length(args))]))
     end
@@ -169,7 +173,7 @@ stagedfunction addToExpression_reorder(ex, args...)
 
 end
 
-function parseCurly(x::Expr, aff::Symbol, constantCoef)
+function parseCurly(x::Expr, aff::Symbol, lcoeffs, rcoeffs)
     if !(x.args[1] == :sum || x.args[1] == :∑ || x.args[1] == :Σ) # allow either N-ARY SUMMATION or GREEK CAPITAL LETTER SIGMA
         error("Expected sum outside curly braces")
     end
@@ -184,7 +188,7 @@ function parseCurly(x::Expr, aff::Symbol, constantCoef)
             error("No commas after semicolon allowed in sum expression, use && for multiple conditions")
         end
         # generate inner loop code first and then wrap in for loops
-        newaff, innercode = parseExpr(x.args[3], aff, constantCoef, aff)
+        newaff, innercode = parseExpr(x.args[3], aff, lcoeffs, rcoeffs, aff)
         @assert aff == newaff
         code = quote
             if $(esc(cond.args[1]))
@@ -198,7 +202,7 @@ function parseCurly(x::Expr, aff::Symbol, constantCoef)
             end)
         end
     else # no condition
-        newaff, code = parseExpr(x.args[2], aff, constantCoef, aff)
+        newaff, code = parseExpr(x.args[2], aff, lcoeffs, rcoeffs, aff)
         for level in length(x.args):-1:3
             code = :(
             for $(esc(x.args[level].args[1])) in $(esc(x.args[level].args[2]))
@@ -235,37 +239,40 @@ end
 
 is_complex_expr(ex) = isa(ex,Expr) && !isexpr(ex,:ref)
 
+parseExprToplevel(x, aff::Symbol) = parseExpr(x, aff, [], [])
+
 # output is assigned to newaff
-function parseExpr(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym())
-    #@show x
-    #@show coefficients
+function parseExpr(x, aff::Symbol, lcoeffs::Vector, rcoeffs::Vector, newaff::Symbol=gensym())
+    # @show x
+    # @show lcoeffs
+    # @show rcoeffs
     if !isa(x,Expr)
         # at the lowest level
-        callexpr = Expr(:call,:addToExpression_reorder,aff,esc(x),coefficients...)
+        callexpr = Expr(:call,:addToExpression_reorder,aff,lcoeffs...,esc(x),rcoeffs...)
         return newaff, :($newaff = $callexpr)
     else
         if x.head == :call && x.args[1] == :+
             b = Expr(:block)
             aff_ = aff
             for arg in x.args[2:(end-1)]
-                aff_, code = parseExpr(arg, aff_, coefficients)
+                aff_, code = parseExpr(arg, aff_, lcoeffs, rcoeffs)
                 push!(b.args, code)
             end
-            newaff, code = parseExpr(x.args[end], aff_, coefficients, newaff)
+            newaff, code = parseExpr(x.args[end], aff_, lcoeffs, rcoeffs, newaff)
             push!(b.args, code)
             return newaff, b
         elseif x.head == :call && x.args[1] == :-
             if length(x.args) == 2 # unary subtraction
-                return parseExpr(x.args[2], aff, vcat(coefficients, -1.0), newaff)
+                return parseExpr(x.args[2], aff, vcat(-1.0, lcoeffs), rcoeffs, newaff)
             else # a - b - c ...
                 b = Expr(:block)
-                aff_, code = parseExpr(x.args[2], aff, coefficients)
+                aff_, code = parseExpr(x.args[2], aff, lcoeffs, rcoeffs)
                 push!(b.args, code)
                 for arg in x.args[3:(end-1)]
-                    aff_,code = parseExpr(arg, aff_, vcat(coefficients, -1.0))
+                    aff_,code = parseExpr(arg, aff_, vcat(-1.0, lcoeffs), rcoeffs)
                     push!(b.args, code)
                 end
-                newaff,code = parseExpr(x.args[end], aff_, vcat(coefficients, -1.0), newaff)
+                newaff,code = parseExpr(x.args[end], aff_, vcat(-1.0, lcoeffs), rcoeffs, newaff)
                 push!(b.args, code)
                 return newaff, b
             end
@@ -274,29 +281,28 @@ function parseExpr(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym()
             # (x+y)*(x+y)
             n_expr = mapreduce(is_complex_expr, +, x.args)
             if n_expr == 1 # special case, only recurse on one argument and don't create temporary objects
-                coefficients = Any[c for c in coefficients]
                 which_idx = 0
                 for i in 2:length(x.args)
                     if is_complex_expr(x.args[i])
                         which_idx = i
-                    else
-                        push!(coefficients, esc(x.args[i]))
                     end
                 end
-                return parseExpr(x.args[which_idx], aff, coefficients, newaff)
+                return parseExpr(x.args[which_idx], aff, vcat(lcoeffs, [esc(x.args[i]) for i in 2:(which_idx-1)]),
+                                                         vcat(rcoeffs, [esc(x.args[i]) for i in (which_idx+1):length(x.args)]),
+                                                         newaff)
             else
                 blk = Expr(:block)
                 for i in 2:length(x.args)
                     if is_complex_expr(x.args[i])
                         s = gensym()
-                        newaff_, parsed = parseExpr(x.args[i], s, [1.0])
+                        newaff_, parsed = parseExpr(x.args[i], s, [], [])
                         push!(blk.args, :($s = 0.0; $parsed))
                         x.args[i] = newaff_
                     else
                         x.args[i] = esc(x.args[i])
                     end
                 end
-                callexpr = Expr(:call,:addToExpression_reorder,aff,vcat(coefficients,x.args[2:end])...)
+                callexpr = Expr(:call,:addToExpression_reorder,aff,lcoeffs...,x.args[2:end]...,rcoeffs...)
                 push!(blk.args, :($newaff = $callexpr))
                 return newaff, blk
             end
@@ -304,7 +310,7 @@ function parseExpr(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym()
             x.args[3] == 2 || error("Only exponents of 2 are currently supported")
             blk = Expr(:block)
             s = gensym()
-            newaff_, parsed = parseExpr(x.args[2], s, [1.0])
+            newaff_, parsed = parseExpr(x.args[2], s, [], [])
             push!(blk.args, :($s = 0.0; $parsed))
             push!(blk.args, :($newaff = $newaff_*$newaff_))
             return newaff, blk
@@ -312,12 +318,12 @@ function parseExpr(x, aff::Symbol, coefficients::Vector, newaff::Symbol=gensym()
             @assert length(x.args) == 3
             numerator = x.args[2]
             denom = x.args[3]
-            return parseExpr(numerator, aff, vcat(coefficients,esc(:(1/$denom))),newaff)
+            return parseExpr(numerator, aff, vcat(esc(:(1/$denom)),lcoeffs),rcoeffs,newaff)
         elseif x.head == :curly
-            return newaff, :($(parseCurly(x,aff,coefficients)); $newaff = $aff)
+            return newaff, :($(parseCurly(x,aff,lcoeffs,rcoeffs)); $newaff = $aff)
         else # at lowest level?
             !isexpr(x,:comparison) || error("Unexpected comparison in expression $x")
-            callexpr = Expr(:call,:addToExpression_reorder,aff,esc(x),coefficients...)
+            callexpr = Expr(:call,:addToExpression_reorder,aff,lcoeffs...,esc(x),rcoeffs...)
             return newaff, :($newaff = $callexpr)
         end
     end
