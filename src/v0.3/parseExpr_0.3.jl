@@ -100,6 +100,8 @@ end
 
 addToExpression(aff, c, x) = error("Cannot construct an affine expression with a term of type ($(typeof(c)))*($(typeof(x)))")
 
+include(joinpath("..","vectorized_macros_overloads.jl"))
+
 function parseCurly(x::Expr, aff::Symbol, constantCoef)
     if !(x.args[1] == :sum || x.args[1] == :∑ || x.args[1] == :Σ) # allow either N-ARY SUMMATION or GREEK CAPITAL LETTER SIGMA
         error("Expected sum outside curly braces")
@@ -162,9 +164,12 @@ function parseCurly(x::Expr, aff::Symbol, constantCoef)
     return code
 end
 
+parseExprToplevel(x, aff::Symbol) = parseExpr(x, aff, [1.0])
 parseExpr(x, aff::Symbol, constantCoef::Vector) = parseExpr(x, aff, Expr(:call,:*,constantCoef...))
 
 function parseExpr(x, aff::Symbol, constantCoef::Union(Number, Expr))
+    # @show x
+    # @show constantCoef
     if !isa(x,Expr)
         # at the lowest level
         return aff, :($aff = addToExpression($aff, $(esc(constantCoef)), $(esc(x))))
@@ -181,7 +186,7 @@ function parseExpr(x, aff::Symbol, constantCoef::Union(Number, Expr))
         elseif x.head == :call && x.args[1] == :*
             coef = timescoef(x)
             var = timesvar(x)
-            return parseExpr(var, aff, :($coef*$constantCoef))
+            return parseExpr(var, aff, :($constantCoef*$coef))
         elseif x.head == :call && x.args[1] == :/
             @assert length(x.args) == 3
             numerator = x.args[2]
