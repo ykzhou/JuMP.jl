@@ -5,7 +5,7 @@
 
 import Base: promote_rule, promote_type, cat_t, hcat, vcat, hvcat, cat
 
-type DummyJuMPArray end
+immutable DummyJuMPArray end
 
 Base.promote_rule{T<:OneIndexedArray}(::Type{T},::Type{Union()}) = DummyJuMPArray
 Base.promote_rule{T<:OneIndexedArray,S<:OneIndexedArray}(::Type{T},::Type{S}) = DummyJuMPArray

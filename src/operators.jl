@@ -265,31 +265,14 @@ end
 for func in [:(Base.promote_type), :(Base.promote_rule)]
     @eval begin
         $func(::Type{Variable},::Type{Union()})  = Variable
-        $func(::Type{Union()},::Type{Variable})  = Variable
-
         $func{R<:Real}(::Type{Variable},::Type{R})  = AffExpr
-        $func{R<:Real}(::Type{R},::Type{Variable})  = AffExpr
-
         $func(::Type{Variable},::Type{AffExpr})  = AffExpr
-        $func(::Type{AffExpr},::Type{Variable})  = AffExpr
-
         $func(::Type{Variable},::Type{QuadExpr}) = QuadExpr
-        $func(::Type{QuadExpr},::Type{Variable}) = QuadExpr
-
         $func(::Type{AffExpr},::Type{Union()})  = AffExpr
-        $func(::Type{Union()},::Type{AffExpr})  = AffExpr
-
         $func{R<:Real}(::Type{AffExpr},::Type{R})   = AffExpr
-        $func{R<:Real}(::Type{R},::Type{AffExpr})   = AffExpr
-
         $func(::Type{AffExpr},::Type{QuadExpr}) = QuadExpr
-        $func(::Type{QuadExpr},::Type{AffExpr}) = QuadExpr
-
         $func(::Type{QuadExpr},::Type{Union()})  = QuadExpr
-        $func(::Type{Union()},::Type{QuadExpr})  = QuadExpr
-
         $func{R<:Real}(::Type{QuadExpr},::Type{R})  = QuadExpr
-        $func{R<:Real}(::Type{R},::Type{QuadExpr})  = QuadExpr
     end
 end
 _throw_transpose_error() = error("Transpose not currently implemented for JuMPArrays with arbitrary index sets.")
