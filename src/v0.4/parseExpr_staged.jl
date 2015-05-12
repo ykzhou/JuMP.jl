@@ -136,11 +136,11 @@ end
 
 include(joinpath("..","vectorized_macros_overloads.jl"))
 
-stagedfunction addToExpression_reorder(ex, arg)
+@generated function addToExpression_reorder(ex, arg)
     :(addToExpression(ex, 1.0, arg))
 end
 
-stagedfunction addToExpression_reorder(ex, args...)
+@generated function addToExpression_reorder(ex, args...)
     if !isleaftype(ex) || mapreduce(t -> !isleaftype(t), |, args)
         error("Can't process abstract types")
     end
