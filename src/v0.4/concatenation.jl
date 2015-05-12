@@ -29,4 +29,4 @@ end
 
 Base.hcat(X::OneIndexedArray...) = hcat([_tofull(x) for x in X]...)
 Base.vcat(X::OneIndexedArray...) = vcat([_tofull(x) for x in X]...)
-Base.hvcat(rows::(Int...), X::OneIndexedArray...) = hvcat(rows, [_tofull(x) for x in X]...)
+Base.hvcat(rows::Tuple{Vararg{Int}}, X::OneIndexedArray...) = hvcat(rows, [_tofull(x) for x in X]...)

@@ -395,10 +395,10 @@ typealias QuadExpr GenericQuadExpr{Float64,Variable}
 QuadExpr() = QuadExpr(Variable[],Variable[],Float64[],AffExpr())
 
 Base.isempty(q::QuadExpr) = (length(q.qvars1) == 0 && isempty(q.aff))
-Base.zero{C,V}(::Type{GenericQuadExpr{C,V}}) = GenericQuadExpr(V[], V[], C[], one(GenericAffExpr{C,V}))
-Base.one{C,V}(::Type{GenericQuadExpr{C,V}})  = GenericQuadExpr(V[], V[], C[], zero(GenericAffExpr{C,V}))
+Base.zero{C,V}(::Type{GenericQuadExpr{C,V}}) = GenericQuadExpr(V[], V[], C[], zero(GenericAffExpr{C,V}))
+Base.one{C,V}(::Type{GenericQuadExpr{C,V}})  = GenericQuadExpr(V[], V[], C[],  one(GenericAffExpr{C,V}))
 Base.zero(q::GenericQuadExpr) = zero(typeof(q))
-Base.one(q::GenericQuadExpr)  = one(typeof(q))
+Base.one(q::GenericQuadExpr)  =  one(typeof(q))
 
 Base.convert(::Type{QuadExpr}, v::Union(Real,Variable,AffExpr)) = QuadExpr(Variable[], Variable[], Float64[], AffExpr(v))
 
